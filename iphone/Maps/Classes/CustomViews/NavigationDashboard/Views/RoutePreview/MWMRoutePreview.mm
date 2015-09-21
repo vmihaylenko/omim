@@ -1,21 +1,18 @@
 #import "Common.h"
-#import "MWMCircularProgress.h"
 #import "MWMNavigationDashboardEntity.h"
+#import "MWMRoutePointCell.h"
+#import "MWMRoutePointLayout.h"
 #import "MWMRoutePreview.h"
-#import "TimeUtils.h"
 #import "UIColor+MapsMeColor.h"
 
-@interface MWMRoutePreview () <MWMCircularProgressDelegate>
+@interface MWMRoutePreview () <MWMRoutePointCellDelegate>
 
-@property (nonatomic) CGFloat goButtonHiddenOffset;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint * goButtonVerticalOffset;
-@property (weak, nonatomic) IBOutlet UIView * statusBox;
-@property (weak, nonatomic) IBOutlet UIView * completeBox;
-@property (weak, nonatomic) IBOutlet NSLayoutConstraint * goButtonHeight;
-@property (weak, nonatomic) IBOutlet UIView * progress;
-@property (weak, nonatomic) IBOutlet UIView * progressIndicator;
-@property (nonatomic) BOOL showGoButton;
-@property (nonatomic) MWMCircularProgress * progressManager;
+@property (weak, nonatomic) IBOutlet NSLayoutConstraint * planingRouteViewHeight;
+@property (weak, nonatomic) IBOutlet UIButton * extendButton;
+@property (weak, nonatomic) IBOutlet UICollectionView * collectionView;
+@property (weak, nonatomic) IBOutlet MWMRoutePointLayout * layout;
+@property (weak, nonatomic) IBOutlet UIImageView * arrowImageView;
+@property (nonatomic) UIImageView * movingCellImage;
 
 @end
 
@@ -24,19 +21,11 @@
 - (void)awakeFromNib
 {
   [super awakeFromNib];
-  self.goButtonHiddenOffset = self.goButtonVerticalOffset.constant;
+  [self setupActualPlaningRouteHeight];
+  [self.collectionView registerNib:[UINib nibWithNibName:[MWMRoutePointCell className] bundle:nil] forCellWithReuseIdentifier:[MWMRoutePointCell className]];
 }
 
-- (void)configureWithEntity:(MWMNavigationDashboardEntity *)entity
-{
-  self.timeLabel.text = [NSDateFormatter estimatedArrivalTimeWithSeconds:@(entity.timeToTarget)];
-  self.distanceLabel.text = [NSString stringWithFormat:@"%@ %@", entity.targetDistance, entity.targetUnits];
-  NSString * arriveStr = [NSDateFormatter localizedStringFromDate:[[NSDate date]
-                                           dateByAddingTimeInterval:entity.timeToTarget]
-                                                          dateStyle:NSDateFormatterNoStyle
-                                                          timeStyle:NSDateFormatterShortStyle];
-  self.arrivalsLabel.text = [NSString stringWithFormat:@"%@ %@", L(@"routing_arrive"), arriveStr];
-}
+- (void)configureWithEntity:(MWMNavigationDashboardEntity *)entity { }
 
 - (void)remove
 {
@@ -45,24 +34,14 @@
   self.vehicle.enabled = YES;
 }
 
-- (void)statePlaning
-{
-  self.showGoButton = NO;
-  self.statusBox.hidden = NO;
-  self.completeBox.hidden = YES;
-  [self.progressManager reset];
-  self.progress.hidden = NO;
-  self.cancelButton.hidden = YES;
-  self.status.text = L(@"routing_planning");
-  self.status.textColor = UIColor.blackHintText;
-}
+- (void)statePlaning { }
 
-- (void)stateError
+- (void)stateError { }
+
+- (void)layoutSubviews
 {
-  self.progress.hidden = YES;
-  self.cancelButton.hidden = NO;
-  self.status.text = L(@"routing_planning_error");
-  self.status.textColor = UIColor.red;
+  [self setupActualPlaningRouteHeight];
+  [super layoutSubviews];
 }
 
 - (void)showGoButtonAnimated:(BOOL)show
@@ -82,42 +61,137 @@
   return frame;
 }
 
-- (void)setShowGoButton:(BOOL)showGoButton
-{
-  _showGoButton = showGoButton;
-  self.goButtonVerticalOffset.constant = showGoButton ? 0.0 : self.goButtonHiddenOffset;
-  self.statusBox.hidden = YES;
-  self.completeBox.hidden = NO;
-  self.progress.hidden = YES;
-  self.cancelButton.hidden = NO;
-}
+- (void)setShowGoButton:(BOOL)showGoButton { }
 
 - (CGFloat)visibleHeight
 {
-  CGFloat height = super.visibleHeight;
-  if (self.showGoButton)
-    height += self.goButtonHeight.constant;
+  CGFloat height = 0.;
+  for (UIView * v in self.subviews)
+    if (![v isEqual:self.statusbarBackground])
+      height += v.height;
   return height;
 }
 
-- (void)setRouteBuildingProgress:(CGFloat)progress
+- (void)setRouteBuildingProgress:(CGFloat)progress { }
+
+- (IBAction)extendTap
 {
-  dispatch_async(dispatch_get_main_queue(), ^
+  BOOL const isExtended = !self.extendButton.selected;
+  self.extendButton.selected = isExtended;
+  [self layoutIfNeeded];
+  [self setupActualPlaningRouteHeight];
+  [UIView animateWithDuration:kDefaultAnimationDuration animations:^
   {
-    self.progressManager.progress = progress / 100.;
-  });
+    self.arrowImageView.transform = isExtended ? CGAffineTransformMakeRotation(M_PI) : CGAffineTransformIdentity;
+    [self layoutIfNeeded];
+  }];
 }
 
-- (MWMCircularProgress *)progressManager
+- (void)setupActualPlaningRouteHeight
 {
-  if (!_progressManager)
-    _progressManager = [[MWMCircularProgress alloc] initWithParentView:self.progressIndicator delegate:self];
-  return _progressManager;
+  BOOL const isPortrait = self.superview.height > self.superview.width;
+  CGFloat const height = isPortrait ? 140. : 96.;
+  self.planingRouteViewHeight.constant = self.extendButton.selected ? height : 44.;
 }
 
-- (void)progressButtonPressed:(nonnull MWMCircularProgress *)progress
+#pragma mark - MWMRoutePointCellDelegate
+
+- (void)didPan:(UIPanGestureRecognizer *)pan cell:(MWMRoutePointCell *)cell
 {
-  [self.cancelButton sendActionsForControlEvents:UIControlEventTouchUpInside];
+  CGPoint const locationPoint = [pan locationInView:self.collectionView];
+  static BOOL isNeedToMove;
+  static NSIndexPath * indexPathOfMovingCell;
+
+  if (pan.state == UIGestureRecognizerStateBegan)
+  {
+    self.layout.isNeedToInitialLayout = NO;
+    isNeedToMove = NO;
+    indexPathOfMovingCell = [self.collectionView indexPathForCell:cell];
+    UIGraphicsBeginImageContextWithOptions(cell.bounds.size, NO, 0.);
+    [cell drawViewHierarchyInRect:cell.bounds afterScreenUpdates:YES];
+    UIImage * image = UIGraphicsGetImageFromCurrentImageContext();
+    UIGraphicsEndImageContext();
+    self.movingCellImage = [[UIImageView alloc] initWithImage:image];
+    [self.collectionView addSubview:self.movingCellImage];
+    self.movingCellImage.center = {locationPoint.x - cell.width / 2, locationPoint.y};
+    [UIView animateWithDuration:kDefaultAnimationDuration animations:^
+    {
+      cell.contentView.alpha = 0.;
+      CGFloat const scale = 1.05;
+      self.movingCellImage.transform = CGAffineTransformMakeScale(scale, scale);
+    }];
+  }
+
+  if (pan.state == UIGestureRecognizerStateChanged)
+  {
+    self.movingCellImage.center = {locationPoint.x - cell.width / 2, locationPoint.y};
+    NSIndexPath * finalIndexPath = [self.collectionView indexPathForItemAtPoint:locationPoint];
+    if (finalIndexPath && ![finalIndexPath isEqual:indexPathOfMovingCell])
+    {
+      if (isNeedToMove)
+        return;
+      isNeedToMove = YES;
+      [self.collectionView performBatchUpdates:^
+      {
+        [self.collectionView moveItemAtIndexPath:finalIndexPath toIndexPath:indexPathOfMovingCell];
+        indexPathOfMovingCell = finalIndexPath;
+      } completion:nil];
+    }
+    else
+    {
+      isNeedToMove = NO;
+    }
+  }
+
+  if (pan.state == UIGestureRecognizerStateEnded)
+  {
+    self.layout.isNeedToInitialLayout = YES;
+    NSIndexPath * finalIndexPath = [self.collectionView indexPathForItemAtPoint:locationPoint];
+    if (finalIndexPath && ![finalIndexPath isEqual:indexPathOfMovingCell])
+    {
+      isNeedToMove = YES;
+      cell.contentView.alpha = 1.;
+      [self.collectionView performBatchUpdates:^
+      {
+        [self.collectionView moveItemAtIndexPath:indexPathOfMovingCell toIndexPath:finalIndexPath];
+      }
+      completion:^(BOOL finished)
+      {
+        [self.movingCellImage removeFromSuperview];
+        self.movingCellImage.transform = CGAffineTransformIdentity;
+      }];
+    }
+    else
+    {
+      isNeedToMove = NO;
+      cell.contentView.alpha = 1.;
+      [self.movingCellImage removeFromSuperview];
+    }
+  }
+}
+
+@end
+
+#pragma mark - UICollectionView
+
+@interface MWMRoutePreview (UICollectionView) <UICollectionViewDataSource, UICollectionViewDelegate>
+
+@end
+
+@implementation MWMRoutePreview (UICollectionView)
+
+- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+{
+  return 2;
+}
+
+- (UICollectionViewCell *)collectionView:(UICollectionView *)collectionView cellForItemAtIndexPath:(NSIndexPath *)indexPath
+{
+  MWMRoutePointCell * cell = [collectionView dequeueReusableCellWithReuseIdentifier:[MWMRoutePointCell className] forIndexPath:indexPath];
+  cell.number.text = @(indexPath.row + 1).stringValue;
+  cell.title.text = !indexPath.row ? @"Current position" : @"";
+  cell.delegate = self;
+  return cell;
 }
 
 @end

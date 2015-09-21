@@ -210,7 +210,7 @@
 - (void)drawFrame
 {
 	shared_ptr<PaintEvent> pe(new PaintEvent(renderPolicy->GetDrawer().get()));
-  
+
   Framework & f = GetFramework();
   if (f.NeedRedraw())
   {

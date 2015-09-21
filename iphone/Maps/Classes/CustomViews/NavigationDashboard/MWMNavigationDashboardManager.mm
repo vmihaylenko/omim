@@ -12,9 +12,7 @@
 
 @interface MWMNavigationDashboardManager ()
 
-@property (nonatomic) IBOutlet MWMRoutePreview * routePreviewLandscape;
-@property (nonatomic) IBOutlet MWMRoutePreview * routePreviewPortrait;
-@property (weak, nonatomic) MWMRoutePreview * routePreview;
+@property (nonatomic) IBOutlet MWMRoutePreview * routePreview;
 
 @property (nonatomic) IBOutlet MWMNavigationDashboard * navigationDashboardLandscape;
 @property (nonatomic) IBOutlet MWMNavigationDashboard * navigationDashboardPortrait;
@@ -43,10 +41,8 @@
     self.delegate = delegate;
     BOOL const isPortrait = self.ownerView.width < self.ownerView.height;
 
-    [NSBundle.mainBundle loadNibNamed:@"MWMPortraitRoutePreview" owner:self options:nil];
-    [NSBundle.mainBundle loadNibNamed:@"MWMLandscapeRoutePreview" owner:self options:nil];
-    self.routePreview = isPortrait ? self.routePreviewPortrait : self.routePreviewLandscape;
-    self.routePreviewPortrait.delegate = self.routePreviewLandscape.delegate = delegate;
+    [NSBundle.mainBundle loadNibNamed:[MWMRoutePreview className] owner:self options:nil];
+    self.routePreview.delegate = delegate;
     if (IPAD)
     {
       [NSBundle.mainBundle loadNibNamed:@"MWMNiPadNavigationDashboard" owner:self options:nil];
@@ -81,13 +77,6 @@
 
 - (void)updateInterface:(BOOL)isPortrait
 {
-  MWMRoutePreview * routePreview = isPortrait ? self.routePreviewPortrait : self.routePreviewLandscape;
-  if (self.routePreview.isVisible && ![routePreview isEqual:self.routePreview])
-  {
-    [self.routePreview remove];
-    [routePreview addToView:self.ownerView];
-  }
-  self.routePreview = routePreview;
   if (IPAD)
     return;
 
@@ -138,14 +127,12 @@
 
 - (void)handleError
 {
-  [self.routePreviewPortrait stateError];
-  [self.routePreviewLandscape stateError];
+  [self.routePreview stateError];
 }
 
 - (void)updateDashboard
 {
-  [self.routePreviewLandscape configureWithEntity:self.entity];
-  [self.routePreviewPortrait configureWithEntity:self.entity];
+  [self.routePreview configureWithEntity:self.entity];
   [self.navigationDashboardLandscape configureWithEntity:self.entity];
   [self.navigationDashboardPortrait configureWithEntity:self.entity];
   if (self.state != MWMNavigationDashboardStateNavigation)
@@ -237,8 +224,7 @@
 
 - (void)setRouteBuildingProgress:(CGFloat)progress
 {
-  [self.routePreviewLandscape setRouteBuildingProgress:progress];
-  [self.routePreviewPortrait setRouteBuildingProgress:progress];
+  [self.routePreview setRouteBuildingProgress:progress];
 }
 
 #pragma mark - MWMNavigationDashboard
@@ -274,24 +260,17 @@
 {
   [self.navigationDashboard remove];
   [self.routePreview addToView:self.ownerView];
-  [self.routePreviewLandscape statePlaning];
-  [self.routePreviewPortrait statePlaning];
+  [self.routePreview statePlaning];
   [self removePanel:self.nextTurnPanel];
 //  [self removePanel:self.lanesPanel];
   auto const state = GetFramework().GetRouter();
   switch (state)
   {
     case routing::RouterType::Pedestrian:
-      self.routePreviewLandscape.pedestrian.selected = YES;
-      self.routePreviewPortrait.pedestrian.selected = YES;
-      self.routePreviewPortrait.vehicle.selected = NO;
-      self.routePreviewLandscape.vehicle.selected = NO;
+      self.routePreview.pedestrian.selected = YES;
       break;
     case routing::RouterType::Vehicle:
-      self.routePreviewLandscape.vehicle.selected = YES;
-      self.routePreviewPortrait.vehicle.selected = YES;
-      self.routePreviewLandscape.pedestrian.selected = NO;
-      self.routePreviewPortrait.pedestrian.selected = NO;
+      self.routePreview.vehicle.selected = YES;
       break;
   }
 }
@@ -309,8 +288,7 @@
 
 - (void)showGoButton:(BOOL)show
 {
-  [self.routePreviewPortrait showGoButtonAnimated:show];
-  [self.routePreviewLandscape showGoButtonAnimated:show];
+  [self.routePreview showGoButtonAnimated:show];
 }
 
 #pragma mark - Properties
@@ -366,14 +344,14 @@
 
 - (void)setTopBound:(CGFloat)topBound
 {
-  _topBound = self.routePreviewLandscape.topBound = self.routePreviewPortrait.topBound =
+  _topBound = self.routePreview.topBound =
   self.navigationDashboardLandscape.topBound = self.navigationDashboardPortrait.topBound = topBound;
   [self.drawer invalidateTopBounds:self.helperPanels topView:self.navigationDashboard];
 }
 
 - (void)setLeftBound:(CGFloat)leftBound
 {
-  _leftBound = self.routePreviewLandscape.leftBound = self.routePreviewPortrait.leftBound =
+  _leftBound = self.routePreview.leftBound =
   self.navigationDashboardLandscape.leftBound = self.navigationDashboardPortrait.leftBound = leftBound;
 }
 
