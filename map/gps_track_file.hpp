@@ -3,6 +3,7 @@
 #include "geometry/point2d.hpp"
 
 #include "base/exception.hpp"
+#include "base/macros.hpp"
 
 #include "std/fstream.hpp"
 #include "std/function.hpp"
@@ -23,15 +24,8 @@ public:
   /// @note Opens file with track data or constructs new
   /// @param filePath - path to the file on disk
   /// @param maxItemCount - max number of items in recycling file
+  /// @exceptions CreateFileException if unable create file.
   GpsTrackFile(string const & filePath, size_t maxItemCount);
-
-  /// Delete move ctor and operator (will be implemented later)
-  GpsTrackFile(GpsTrackFile &&) = delete;
-  GpsTrackFile & operator=(GpsTrackFile &&) = delete;
-
-  /// Delete copy ctor and operator (unsupported by nature)
-  GpsTrackFile(GpsTrackFile const &) = delete;
-  GpsTrackFile & operator=(GpsTrackFile const &) = delete;
 
   /// Returns true if file is open, otherwise returns false
   bool IsOpen() const;
@@ -50,10 +44,12 @@ public:
   /// @returns identifier of point, kInvalidId if point was not added.
   /// @note Timestamp must be not less than GetTimestamp(), otherwise function returns false.
   /// @note File is circular, when GetMaxItemCount() limit is reached, old point is popped out from file.
+  /// @exceptions WriteFileException if write fails.
   size_t Append(double timestamp, m2::PointD const & pt, double speedMPS, size_t & poppedId);
 
   /// Remove all points from the file
   /// @returns range of identifiers of removed points, or pair(kInvalidId,kInvalidId) if nothing was removed.
+  /// @exceptions WriteFileException if write fails.
   pair<size_t, size_t> Clear();
 
   /// Returns max number of points in recycling file
@@ -69,15 +65,21 @@ public:
   double GetTimestamp() const;
 
   /// Enumerates all points from the file in timestamp ascending order
-  /// If fn returns false then enumeration is stopped.
+  /// @param fn - callable object which receives points. If fn returns false then enumeration is stopped.
+  /// @exceptions CorruptedFileException if file is corrupted or ReadFileException if read fails
   void ForEach(function<bool(double timestamp, m2::PointD const & pt, double speedMPS, size_t id)> const & fn);
 
   /// Drops points earlier than specified date
   /// @param timestamp - timestamp of lower bound, number of seconds since 1.1.1970.
   /// @returns range of identifiers of removed points, or pair(kInvalidId,kInvalidId) if nothing was removed.
+  /// @exceptions CorruptedFileException if file is corrupted, ReadFileException if read fails or WriteFileException if write fails.
   pair<size_t, size_t> DropEarlierThan(double timestamp);
 
 private:
+  /// Delete copy ctor and operator (unsupported by nature).
+  /// Delete move ctor and operator (can be implemented later).
+  DISALLOW_COPY_AND_MOVE(GpsTrackFile);
+
   /// Item, information for point, stored in recycling file.
   struct Item
   {
