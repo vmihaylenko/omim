@@ -81,15 +81,15 @@ EditorDialog::EditorDialog(QWidget * parent, osm::EditableMapObject & emo)
 
   if (emo.IsAddressEditable())
   {  // Address rows.
-    vector<string> nearbyStreets = emo.GetNearbyStreets();
+    vector<osm::EditableMapObject::TLocalizedStreet> nearbyStreets = emo.GetNearbyStreets();
     // If feature does not have a specified street, display empty combo box.
-    if (emo.GetStreet().empty())
-      nearbyStreets.insert(nearbyStreets.begin(), "");
+    if (emo.GetStreet().first.empty())
+      nearbyStreets.insert(nearbyStreets.begin(), {"", ""});
     grid->addWidget(new QLabel(kStreetObjectName), row, 0);
     QComboBox * cmb = new QComboBox();
     for (int i = 0; i < nearbyStreets.size(); ++i)
     {
-      cmb->addItem(nearbyStreets[i].c_str());
+      cmb->addItem(nearbyStreets[i].first.c_str());
       if (emo.GetStreet() == nearbyStreets[i])
         cmb->setCurrentIndex(i);
     }
@@ -195,7 +195,8 @@ void EditorDialog::OnSave()
   if (m_feature.IsAddressEditable())
   {
     m_feature.SetHouseNumber(findChild<QLineEdit *>(kHouseNumberObjectName)->text().toStdString());
-    m_feature.SetStreet(findChild<QComboBox *>(kStreetObjectName)->currentText().toStdString());
+    // TODO: Set default and localized street.
+    m_feature.SetStreet({findChild<QComboBox *>(kStreetObjectName)->currentText().toStdString(), ""});
     m_feature.SetPostcode(findChild<QLineEdit *>(kPostcodeObjectName)->text().toStdString());
   }
 
