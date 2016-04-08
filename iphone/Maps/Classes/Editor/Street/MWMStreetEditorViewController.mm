@@ -6,14 +6,20 @@ namespace
   NSString * const kStreetEditorEditCell = @"MWMStreetEditorEditTableViewCell";
 } // namespace
 
-@interface MWMStreetEditorViewController () <MWMStreetEditorEditCellProtocol>
+using namespace osm;
 
-@property (nonatomic) NSMutableArray<NSString *> * streets;
+@interface MWMStreetEditorViewController () <MWMStreetEditorEditCellProtocol>
+{
+  vector<EditableMapObject::TLocalizedStreet> m_streets;
+  EditableMapObject::TLocalizedStreet m_editedStreetName;
+}
+
+//@property (nonatomic) NSMutableArray<NSString *> * streets;
 
 @property (nonatomic) NSUInteger selectedStreet;
 @property (nonatomic) NSUInteger lastSelectedStreet;
 
-@property (nonatomic) NSString * editedStreetName;
+//@property (nonatomic) NSString * editedStreetName;
 
 @end
 
@@ -45,15 +51,20 @@ namespace
 
 - (void)configData
 {
-  self.streets = [[self.delegate getNearbyStreets] mutableCopy];
-  NSString * currentStreet = [self.delegate getStreet];
-  BOOL const haveCurrentStreet = (currentStreet && currentStreet.length != 0);
+  m_streets = self.delegate.nearbyStreets;
+
+//  self.streets = [[self.delegate getNearbyStreets] mutableCopy];
+//  NSString * currentStreet = [self.delegate getStreet];
+  auto const & currentStreet = self.delegate.currentStreet;
+
+  BOOL const haveCurrentStreet = !currentStreet.first.empty();
   if (haveCurrentStreet)
   {
-    [self.streets removeObject:currentStreet];
-    [self.streets insertObject:currentStreet atIndex:0];
+//    [self.streets removeObject:currentStreet];
+//    [self.streets insertObject:currentStreet atIndex:0];
   }
-  self.editedStreetName = @"";
+  m_editedStreetName = {"", ""};
+//  self.editedStreetName = @"";
   self.selectedStreet = haveCurrentStreet ? 0 : NSNotFound;
   self.lastSelectedStreet = NSNotFound;
   self.navigationItem.rightBarButtonItem.enabled = haveCurrentStreet;
@@ -74,8 +85,9 @@ namespace
 
 - (void)onDone
 {
-  NSString * street = (self.selectedStreet == NSNotFound ? self.editedStreetName : self.streets[self.selectedStreet]);
-  [self.delegate setStreet:street];
+  auto const & street = (self.selectedStreet == NSNotFound ? m_editedStreetName : m_streets[self.selectedStreet]);
+  [self.delegate setNearbyStreet:street];
+//  [self.delegate setStreet:street];
   [self onCancel];
 }
 
@@ -84,14 +96,14 @@ namespace
   if ([cell isKindOfClass:[MWMStreetEditorEditTableViewCell class]])
   {
     MWMStreetEditorEditTableViewCell * tCell = (MWMStreetEditorEditTableViewCell *)cell;
-    [tCell configWithDelegate:self street:self.editedStreetName];
+//    [tCell configWithDelegate:self street:self.editedStreetName];
   }
   else
   {
     NSUInteger const index = indexPath.row;
-    NSString * street = self.streets[index];
+//    NSString * street = self.streets[index];
     BOOL const selected = (self.selectedStreet == index);
-    cell.textLabel.text = street;
+//    cell.textLabel.text = street;
     cell.accessoryType = selected ? UITableViewCellAccessoryCheckmark : UITableViewCellAccessoryNone;
   }
 }
@@ -103,7 +115,7 @@ namespace
   if (text && text.length != 0)
   {
     self.navigationItem.rightBarButtonItem.enabled = YES;
-    self.editedStreetName = text;
+//    self.editedStreetName = text;
     if (self.selectedStreet != NSNotFound)
     {
       self.lastSelectedStreet = self.selectedStreet;
@@ -128,7 +140,7 @@ namespace
 
 - (UITableViewCell * _Nonnull)tableView:(UITableView * _Nonnull)tableView cellForRowAtIndexPath:(NSIndexPath * _Nonnull)indexPath
 {
-  NSUInteger const streetsCount = self.streets.count;
+  auto const streetsCount = m_streets.size();
   if (streetsCount == 0)
     return [tableView dequeueReusableCellWithIdentifier:kStreetEditorEditCell];
   if (indexPath.section == 0)
@@ -139,7 +151,7 @@ namespace
 
 - (NSInteger)tableView:(UITableView * _Nonnull)tableView numberOfRowsInSection:(NSInteger)section
 {
-  NSUInteger const count = self.streets.count;
+  auto const count = m_streets.size();
   if ((section == 0 && count == 0) || section != 0)
     return 1;
   return count;
@@ -147,7 +159,7 @@ namespace
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
 {
-  return self.streets.count > 0 ? 2 : 1;
+  return m_streets.size() > 0 ? 2 : 1;
 }
 
 #pragma mark - UITableViewDelegate
