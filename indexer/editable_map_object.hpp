@@ -46,6 +46,8 @@ struct LocalizedName
 class EditableMapObject : public MapObject
 {
 public:
+  using TLocalizedStreet = pair<string /* default */, string /* localized */>;
+
   bool IsNameEditable() const;
   bool IsAddressEditable() const;
 
@@ -55,8 +57,8 @@ public:
 
   StringUtf8Multilang const & GetName() const;
   vector<LocalizedName> GetLocalizedNames() const;
-  string const & GetStreet() const;
-  vector<string> const & GetNearbyStreets() const;
+  TLocalizedStreet const & GetStreet() const;
+  vector<TLocalizedStreet> const & GetNearbyStreets() const;
   string const & GetHouseNumber() const;
   string GetPostcode() const;
   string GetWikipedia() const;
@@ -69,8 +71,8 @@ public:
   void SetType(uint32_t featureType);
   void SetID(FeatureID const & fid);
   //  void SetTypes(feature::TypesHolder const & types);
-  void SetStreet(string const & street);
-  void SetNearbyStreets(vector<string> && streets);
+  void SetStreet(TLocalizedStreet const & street);
+  void SetNearbyStreets(vector<TLocalizedStreet> && streets);
   /// @returns false if house number fails validation.
   static bool ValidateHouseNumber(string const & houseNumber);
   void SetHouseNumber(string const & houseNumber);
@@ -95,8 +97,8 @@ public:
 
 private:
   string m_houseNumber;
-  string m_street;
-  vector<string> m_nearbyStreets;
+  TLocalizedStreet m_street;
+  vector<TLocalizedStreet> m_nearbyStreets;
   EditableProperties m_editableProperties;
 };
 }  // namespace osm

@@ -2448,21 +2448,29 @@ bool Framework::ParseEditorDebugCommand(search::SearchParams const & params)
 
 namespace
 {
-vector<string> FilterNearbyStreets(vector<search::ReverseGeocoder::Street> const & streets,
-                                   string const & exactFeatureStreet = "")
+vector<osm::EditableMapObject::TLocalizedStreet>
+        FilterNearbyStreets(vector<search::ReverseGeocoder::Street> const & streets,
+                            string const & exactFeatureStreet = "")
 {
-  vector<string> results;
+  vector<pair<string, string>> results;
   // Exact feature street always goes first in Editor UI street list.
+
+  // TODO: Here we have to push into results localized street name as second pair's parametr.
   if (!exactFeatureStreet.empty())
-    results.push_back(exactFeatureStreet);
+    results.emplace_back(exactFeatureStreet, "");
   // Reasonable number of different nearby street names to display in UI.
   constexpr size_t kMaxNumberOfNearbyStreetsToDisplay = 8;
   for (auto const & street : streets)
   {
     auto const e = results.end();
-    if (e == find(results.begin(), e, street.m_name))
+    auto const it = find_if(results.begin(), e, [&street](pair<string, string> const & p)
+                            {
+                              return p.first == street.m_name;
+                            });
+    if (it == e)
     {
-      results.push_back(street.m_name);
+      // TODO: Here we have to push into results localized street name as second pair's parametr.
+      results.emplace_back(street.m_name, "");
       if (results.size() >= kMaxNumberOfNearbyStreetsToDisplay)
         break;
     }
@@ -2518,7 +2526,8 @@ bool Framework::GetEditableMapObject(FeatureID const & fid, osm::EditableMapObje
       street = streets.first[streets.second].m_name;
     emo.SetNearbyStreets(FilterNearbyStreets(streets.first, street));
   }
-  emo.SetStreet(street);
+  //TODO: We have to set default and localized name.
+  emo.SetStreet({street, ""});
   return true;
 }
 
