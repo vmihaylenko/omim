@@ -719,6 +719,8 @@ using namespace osm_auth_ios;
   else
     textFieldInSearchBar = [UITextField appearanceWhenContainedInInstancesOfClasses:@[[UISearchBar class]]];
 
+//  [[UIToolbar appearance] setTintColor:[UIColor linkBlue]];
+
   textField.backgroundColor = [UIColor white];
   textFieldInSearchBar.defaultTextAttributes = @{
     NSForegroundColorAttributeName : [UIColor blackPrimaryText],

@@ -3,6 +3,8 @@
 #import "MWMNavigationController.h"
 #import "UIViewController+Navigation.h"
 
+#import <SafariServices/SafariServices.h>
+
 @interface MWMNavigationController () <UINavigationControllerDelegate>
 
 @end
@@ -22,6 +24,12 @@
 
 - (void)navigationController:(UINavigationController *)navigationController willShowViewController:(UIViewController *)viewController animated:(BOOL)animated
 {
+  if ([viewController isKindOfClass:[SFSafariViewController class]])
+  {
+    [navigationController setNavigationBarHidden:YES];
+    return;
+  }
+
   NSAssert([viewController conformsToProtocol:@protocol(MWMController)], @"Controller must inherit ViewController or TableViewController class");
   id<MWMController> vc = static_cast<id<MWMController>>(viewController);
   [navigationController setNavigationBarHidden:!vc.hasNavigationBar animated:animated];

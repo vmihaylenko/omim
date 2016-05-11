@@ -3,6 +3,8 @@
 #import "UIImageView+Coloring.h"
 #import "UIKitCategories.h"
 
+#import <SafariServices/SafariServices.h>
+
 @implementation NSObject (Optimized)
 
 + (NSString *)className
@@ -340,6 +342,44 @@
   UIGraphicsEndImageContext();
 
   return image;
+}
+
+@end
+
+@interface UIViewController (SafariDelegateImpl) <SFSafariViewControllerDelegate>
+
+@end
+
+@implementation UIViewController (SafariDelegateImpl)
+
+- (void)safariViewControllerDidFinish:(SFSafariViewController *)controller
+{
+  [self.navigationController popViewControllerAnimated:YES];
+}
+
+@end
+
+@implementation UIViewController (SafariURL) 
+
+- (BOOL)openURL:(NSURL *)url
+{
+  UIApplication * a = [UIApplication sharedApplication];
+  if (![a canOpenURL:url])
+    return NO;
+
+  if (!isIOS7 && !isIOS8 && ([url.scheme rangeOfString:@"http"].location != NSNotFound ||
+                             [url.scheme rangeOfString:@"https"].location != NSNotFound))
+  {
+    SFSafariViewController * vc = [[SFSafariViewController alloc] initWithURL:url];
+    vc.delegate = (id<SFSafariViewControllerDelegate>)self;
+    [self.navigationController pushViewController:vc animated:YES];
+  }
+  else
+  {
+    [a openURL:url];
+  }
+
+  return YES;
 }
 
 @end

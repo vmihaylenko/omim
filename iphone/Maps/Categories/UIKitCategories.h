@@ -110,3 +110,15 @@ typedef void (^MWMAlertViewCompletionBlock) (UIAlertView * alertView, NSInteger 
 + (UIImage *)imageWithColor:(UIColor *)color;
 
 @end
+
+@interface UIViewController (SafariURL)
+
+/*!
+ * @discussion Open url in SFSafariViewController or in Safari app (if target version is lower than iOS 9) or just open url by UIApplication's instance method if url's scheme doesn't start with "http://"
+ * @param url An URL to be used for opening
+ * @return YES if app can to open url, otherwise NO.
+*/
+
+- (BOOL)openURL:(NSURL *)url;
+
+@end
