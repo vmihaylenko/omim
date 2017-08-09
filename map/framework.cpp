@@ -1538,9 +1538,10 @@ Framework::DoAfterUpdate Framework::ToDoAfterUpdate() const
   if (countrySizeInBytes == 0 || attrs.m_status != NodeStatus::OnDiskOutOfDate)
     return DoAfterUpdate::Nothing;
 
-  return connectionStatus == Platform::EConnectionType::CONNECTION_WWAN
-             ? DoAfterUpdate::AskForUpdateMaps
-             : DoAfterUpdate::AutoupdateMaps;
+  if (s.IsPossibleToAutoupdate() && connectionStatus == Platform::EConnectionType::CONNECTION_WIFI)
+    return DoAfterUpdate::AutoupdateMaps;
+
+  return DoAfterUpdate::AskForUpdateMaps;
 }
 
 search::DisplayedCategories const & Framework::GetDisplayedCategories()

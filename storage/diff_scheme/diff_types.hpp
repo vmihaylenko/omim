@@ -21,4 +21,11 @@ struct FileInfo final
 };
 
 using NameFileInfoMap = std::unordered_map<std::string, FileInfo>;
+
+struct LocalMapsInfo final
+{
+  using NameVersionMap = std::unordered_map<std::string, uint64_t>;
+  uint64_t m_currentDataVersion = 0;
+  NameVersionMap m_localMaps;
+};
 }  // namespace diff_scheme

@@ -10,6 +10,8 @@
 #include "platform/servers_list.hpp"
 #include "platform/settings.hpp"
 
+#include "generator/mwm_diff/diff.hpp"
+
 #include "coding/file_name_utils.hpp"
 #include "coding/internal/file_data.hpp"
 #include "coding/reader.hpp"
@@ -36,6 +38,9 @@ namespace storage
 {
 namespace
 {
+string const kUpdateQueueKey = "UpdateQueue";
+string const kDownloadQueueKey = "DownloadQueue";
+
 uint64_t GetLocalSize(shared_ptr<LocalCountryFile> file, MapOptions opt)
 {
   if (!file)
@@ -224,7 +229,7 @@ void Storage::Migrate(TCountriesVec const & existedCountries)
     for (auto const & smallCountry : mapping[country])
       ss << (ss.str().empty() ? "" : ";") << smallCountry;
   }
-  settings::Set("DownloadQueue", ss.str());
+  settings::Set(kDownloadQueueKey, ss.str());
 }
 
 void Storage::Clear()
@@ -287,6 +292,7 @@ void Storage::RegisterAllLocalMaps()
 
     i = j;
   }
+  LoadDiffScheme();
   RestoreDownloadQueue();
 }
 
@@ -447,10 +453,16 @@ void Storage::SaveDownloadQueue()
   if (!m_keepDownloadingQueue)
     return;
 
-  stringstream ss;
+  ostringstream download;
+  ostringstream update;
   for (auto const & item : m_queue)
+  {
+    auto & ss = item.GetInitOptions() == MapOptions::Diff ? update : download;
     ss << (ss.str().empty() ? "" : ";") << item.GetCountryId();
-  settings::Set("DownloadQueue", ss.str());
+  }
+
+  settings::Set(kDownloadQueueKey, download.str());
+  settings::Set(kUpdateQueueKey, update.str());
 }
 
 void Storage::RestoreDownloadQueue()
@@ -458,16 +470,20 @@ void Storage::RestoreDownloadQueue()
   if (!m_keepDownloadingQueue)
     return;
 
-  string queue;
-  if (!settings::Get("DownloadQueue", queue))
+  string download, update;
+  if (!settings::Get(kDownloadQueueKey, download) && !settings::Get(kUpdateQueueKey, update))
     return;
 
-  strings::SimpleTokenizer iter(queue, ";");
-  while (iter)
-  {
-    DownloadNode(*iter);
-    ++iter;
-  }
+  auto parse = [this](string const & token, bool isUpdate) {
+    if (token.empty())
+      return;
+
+    for (strings::SimpleTokenizer iter(token, ";"); iter; ++iter)
+      DownloadNode(*iter, isUpdate);
+  };
+
+  parse(download, false /* isUpdate */);
+  parse(update, true /* isUpdate */);
 }
 
 void Storage::DownloadCountry(TCountryId const & countryId, MapOptions opt)
@@ -707,8 +723,6 @@ void Storage::OnMapFileDownloadFinished(bool success,
     return;
   }
 
-  OnMapDownloadFinished(countryId, success, queuedCountry.GetInitOptions());
-
   // Send stastics to Push Woosh.
   if (success)
   {
@@ -721,12 +735,7 @@ void Storage::OnMapFileDownloadFinished(bool success,
                                                          std::string(nowStr));
   }
 
-  CorrectJustDownloadedAndQueue(m_queue.begin());
-  SaveDownloadQueue();
-
-  m_downloader->Reset();
-  NotifyStatusChangedForHierarchy(countryId);
-  DownloadNextCountryFromQueue();
+  OnMapDownloadFinished(countryId, success, queuedCountry.GetInitOptions());
 }
 
 void Storage::ReportProgress(TCountryId const & countryId, MapFilesDownloader::TProgress const & p)
@@ -768,18 +777,32 @@ void Storage::OnServerListDownloaded(vector<string> const & urls)
   if (m_queue.empty())
     return;
 
-  QueuedCountry const & queuedCountry = m_queue.front();
-  TCountryId const & countryId = queuedCountry.GetCountryId();
-  MapOptions const file = queuedCountry.GetCurrentFile();
+  QueuedCountry & queuedCountry = m_queue.front();
+  if (queuedCountry.GetInitOptions() == MapOptions::Diff)
+  {
+    using diff_scheme::Status;
+    auto const status = m_diffManager.Status();
+    if (status == Status::Undefined)
+    {
+      m_diffManager.SetDeferredUpdateTask(std::async(std::launch::deferred,
+                                                     bind(&Storage::OnServerListDownloaded, this, urls)));
+      return;
+    }
+    else if (status == Status::NotAvailable)
+    {
+      queuedCountry.ResetToDefaultOptions();
+    }
+  }
 
   vector<string> const & downloadingUrls =
       m_downloadingUrlsForTesting.empty() ? urls : m_downloadingUrlsForTesting;
   vector<string> fileUrls;
   fileUrls.reserve(downloadingUrls.size());
   for (string const & url : downloadingUrls)
-    fileUrls.push_back(GetFileDownloadUrl(url, countryId, file));
+    fileUrls.push_back(GetFileDownloadUrl(url, queuedCountry));
 
-  string const filePath = GetFileDownloadPath(countryId, file);
+  string const filePath =
+      GetFileDownloadPath(queuedCountry.GetCountryId(), queuedCountry.GetCurrentFile());
   m_downloader->DownloadMapFile(fileUrls, filePath, GetDownloadSize(queuedCountry),
                                 bind(&Storage::OnMapFileDownloadFinished, this, _1, _2),
                                 bind(&Storage::OnMapFileDownloadProgress, this, _1));
@@ -799,8 +822,26 @@ void Storage::OnMapFileDownloadProgress(MapFilesDownloader::TProgress const & pr
   ReportProgressForHierarchy(m_queue.front().GetCountryId(), progress);
 }
 
-bool Storage::RegisterDownloadedFiles(TCountryId const & countryId, MapOptions files)
+void Storage::RegisterDownloadedFiles(TCountryId const & countryId, MapOptions files,
+                                      DownloadedFilesProcessingFn const & fn)
 {
+  if (files == MapOptions::Diff)
+  {
+    m_diffManager.ApplyDiff([this, fn, countryId] {
+      bool const success = ApplyDiff(countryId);
+      GetPlatform().RunOnGuiThread([fn, countryId, success, this] {
+        if (!success)
+        {
+          m_diffManager.SetStatus(diff_scheme::Status::NotAvailable);
+          // TODO: Log the diff applying error (Downloader_DiffScheme_error (Aloha)).
+        }
+
+        fn(countryId, success);
+      });
+    });
+    return;
+  }
+
   CountryFile const countryFile = GetCountryFile(countryId);
   TLocalFilePtr localFile = GetLocalFile(countryId, GetCurrentDataVersion());
   if (!localFile)
@@ -809,7 +850,8 @@ bool Storage::RegisterDownloadedFiles(TCountryId const & countryId, MapOptions f
   {
     LOG(LERROR, ("Local file data structure can't be prepared for downloaded file(", countryFile,
                  files, ")."));
-    return false;
+    fn(countryId, false /* isSuccess */);
+    return;
   }
 
   bool ok = true;
@@ -828,33 +870,33 @@ bool Storage::RegisterDownloadedFiles(TCountryId const & countryId, MapOptions f
       break;
     }
   }
-  localFile->SyncWithDisk();
+
   if (!ok)
   {
     localFile->DeleteFromDisk(files);
-    return false;
+    fn(countryId, false);
+    return;
   }
+
   RegisterCountryFiles(localFile);
-  return true;
+  fn(countryId, true);
 }
 
 void Storage::OnMapDownloadFinished(TCountryId const & countryId, bool success, MapOptions files)
 {
+  ASSERT_THREAD_CHECKER(m_threadChecker, ());
   ASSERT(m_didDownload != nullptr, ("Storage::Init wasn't called"));
   ASSERT_NOT_EQUAL(MapOptions::Nothing, files,
                    ("This method should not be called for empty files set."));
-  {
-    alohalytics::LogEvent(
-        "$OnMapDownloadFinished",
-        alohalytics::TStringMap({{"name", countryId},
-                                 {"status", success ? "ok" : "failed"},
-                                 {"version", strings::to_string(GetCurrentDataVersion())},
-                                 {"option", DebugPrint(files)}}));
-    GetPlatform().GetMarketingService().SendMarketingEvent(marketing::kDownloaderMapActionFinished,
-                                                           {{"action", "download"}});
-  }
 
-  success = success && RegisterDownloadedFiles(countryId, files);
+  alohalytics::LogEvent(
+      "$OnMapDownloadFinished",
+      alohalytics::TStringMap({{"name", countryId},
+                               {"status", success ? "ok" : "failed"},
+                               {"version", strings::to_string(GetCurrentDataVersion())},
+                               {"option", DebugPrint(files)}}));
+  GetPlatform().GetMarketingService().SendMarketingEvent(marketing::kDownloaderMapActionFinished,
+                                                         {{"action", "download"}});
 
   if (!success)
   {
@@ -862,25 +904,48 @@ void Storage::OnMapDownloadFinished(TCountryId const & countryId, bool success, 
     return;
   }
 
-  TLocalFilePtr localFile = GetLocalFile(countryId, GetCurrentDataVersion());
-  ASSERT(localFile, ());
-  DeleteCountryIndexes(*localFile);
-  m_didDownload(countryId, localFile);
+  RegisterDownloadedFiles(countryId, files, [this](TCountryId const & id, bool isSuccess) {
+    ASSERT_THREAD_CHECKER(m_threadChecker, ());
+    if (!isSuccess)
+    {
+      m_failedCountries.insert(id);
+      return;
+    }
+
+    TLocalFilePtr localFile = GetLocalFile(id, GetCurrentDataVersion());
+    ASSERT(localFile, ());
+    DeleteCountryIndexes(*localFile);
+    m_didDownload(id, localFile);
+
+    CorrectJustDownloadedAndQueue(m_queue.begin());
+    SaveDownloadQueue();
+
+    m_downloader->Reset();
+    NotifyStatusChangedForHierarchy(id);
+    DownloadNextCountryFromQueue();
+  });
 }
 
-string Storage::GetFileDownloadUrl(string const & baseUrl, TCountryId const & countryId,
-                                   MapOptions file) const
+string Storage::GetFileDownloadUrl(string const & baseUrl,
+                                   QueuedCountry const & queuedCountry) const
 {
+  auto const & countryId = queuedCountry.GetCountryId();
   CountryFile const & countryFile = GetCountryFile(countryId);
 
-  string const fileName = GetFileName(countryFile.GetName(), file, GetCurrentDataVersion());
-  return GetFileDownloadUrl(baseUrl, fileName);
-}
+  auto const currentFileOpt = queuedCountry.GetCurrentFile();
+  string const fileName =
+      GetFileName(countryFile.GetName(), currentFileOpt, GetCurrentDataVersion());
 
-string Storage::GetFileDownloadUrl(string const & baseUrl, string const & fName) const
-{
-  return baseUrl + OMIM_OS_NAME "/" + strings::to_string(GetCurrentDataVersion()) + "/" +
-         UrlEncode(fName);
+  ostringstream url;
+  url << baseUrl;
+  string const currentVersion = strings::to_string(GetCurrentDataVersion());
+  if (currentFileOpt == MapOptions::Diff)
+    url << "diffs/" << currentVersion << "/"  << strings::to_string(m_diffManager.InfoFor(countryId).m_version);
+  else
+    url << OMIM_OS_NAME "/" << currentVersion;
+
+  url << "/" << UrlEncode(fileName);
+  return url.str();
 }
 
 TCountryId Storage::FindCountryIdByFile(string const & name) const
@@ -1129,7 +1194,11 @@ bool Storage::DeleteCountryFilesFromDownloader(TCountryId const & countryId, Map
 
 uint64_t Storage::GetDownloadSize(QueuedCountry const & queuedCountry) const
 {
-  CountryFile const & file = GetCountryFile(queuedCountry.GetCountryId());
+  TCountryId const & countryId = queuedCountry.GetCountryId();
+  if (queuedCountry.GetInitOptions() == MapOptions::Diff)
+    return m_diffManager.InfoFor(countryId).m_size;
+
+  CountryFile const & file = GetCountryFile(countryId);
   return GetRemoteSize(file, queuedCountry.GetCurrentFile(), GetCurrentDataVersion());
 }
 
@@ -1265,7 +1334,7 @@ bool Storage::HasLatestVersion(TCountryId const & countryId) const
   return CountryStatusEx(countryId) == Status::EOnDisk;
 }
 
-void Storage::DownloadNode(TCountryId const & countryId)
+void Storage::DownloadNode(TCountryId const & countryId, bool isUpdate /* = false */)
 {
   ASSERT_THREAD_CHECKER(m_threadChecker, ());
 
@@ -1277,10 +1346,11 @@ void Storage::DownloadNode(TCountryId const & countryId)
   if (GetNodeStatus(*node).status == NodeStatus::OnDisk)
     return;
 
-  auto downloadAction = [this](TCountryTreeNode const & descendantNode) {
+  auto downloadAction = [this, isUpdate](TCountryTreeNode const & descendantNode) {
     if (descendantNode.ChildrenCount() == 0 &&
         GetNodeStatus(descendantNode).status != NodeStatus::OnDisk)
-      this->DownloadCountry(descendantNode.Value().Name(), MapOptions::MapWithCarRouting);
+      this->DownloadCountry(descendantNode.Value().Name(),
+                            isUpdate ? MapOptions::Diff : MapOptions::MapWithCarRouting);
   };
 
   node->ForEachInSubtree(downloadAction);
@@ -1327,6 +1397,59 @@ void Storage::CalMaxMwmSizeBytes()
         m_maxMwmSizeBytes = mwmSizeBytes;
     }
   });
+}
+
+void Storage::LoadDiffScheme()
+{
+  ASSERT_THREAD_CHECKER(m_threadChecker, ());
+  diff_scheme::LocalMapsInfo localMapsInfo;
+  auto const currentVersion = GetCurrentDataVersion();
+  localMapsInfo.m_currentDataVersion = currentVersion;
+  vector<TLocalFilePtr> localMaps;
+  GetLocalMaps(localMaps);
+  for (auto const & map : localMaps)
+  {
+    auto const mapVersion = map->GetVersion();
+    if (mapVersion != currentVersion && mapVersion > 0)
+      localMapsInfo.m_localMaps.emplace(map->GetCountryName(), mapVersion);
+  }
+
+  m_diffManager.Load(move(localMapsInfo));
+}
+
+bool Storage::IsPossibleToAutoupdate() const
+{
+  ASSERT_THREAD_CHECKER(m_threadChecker, ());
+  return m_diffManager.IsPossibleToAutoupdate();
+}
+
+bool Storage::ApplyDiff(TCountryId const & countryId)
+{
+  string const diffReadyPath = GetFileDownloadPath(countryId, MapOptions::Diff);
+  TLocalFilePtr diffFile =
+      PreparePlaceForCountryFiles(GetCurrentDataVersion(), m_dataDir, GetCountryFile(countryId));
+
+  CHECK(diffFile, ());
+  if (!my::RenameFileX(diffReadyPath, diffFile->GetPath(MapOptions::Diff)))
+  {
+    diffFile->SyncWithDisk();
+    diffFile->DeleteFromDisk(MapOptions::Diff);
+    return false;
+  }
+
+  diffFile->SyncWithDisk();
+
+  TLocalFilePtr oldMwmFile = GetLocalFile(countryId, m_diffManager.InfoFor(countryId).m_version);
+  CHECK(oldMwmFile, ());
+  string const oldMwmPath = oldMwmFile->GetPath(MapOptions::Map);
+  string const newMwmPath = diffFile->GetPath(MapOptions::Map);
+  string const diffPath = diffFile->GetPath(MapOptions::Diff);
+  bool const result = generator::mwm_diff::ApplyDiff(oldMwmPath, newMwmPath, diffPath);
+  diffFile->DeleteFromDisk(MapOptions::Diff);
+  if (result)
+    RegisterCountryFiles(diffFile);
+
+  return result;
 }
 
 StatusAndError Storage::GetNodeStatusInfo(
@@ -1546,7 +1669,7 @@ void Storage::UpdateNode(TCountryId const & countryId)
 {
   ForEachInSubtree(countryId, [this](TCountryId const & descendantId, bool groupNode) {
     if (!groupNode && m_localFiles.find(descendantId) != m_localFiles.end())
-      this->DownloadNode(descendantId);
+      this->DownloadNode(descendantId, true /* isUpdate */);
   });
 }
 
@@ -1570,7 +1693,10 @@ void Storage::RetryDownloadNode(TCountryId const & countryId)
 {
   ForEachInSubtree(countryId, [this](TCountryId const & descendantId, bool groupNode) {
     if (!groupNode && m_failedCountries.count(descendantId) != 0)
-      DownloadNode(descendantId);
+    {
+      bool const isUpdateRequest = m_diffManager.HasDiffFor(descendantId);
+      DownloadNode(descendantId, isUpdateRequest);
+    }
   });
 }
 
