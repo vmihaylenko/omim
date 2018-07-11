@@ -102,6 +102,11 @@ RouteWeight SingleVehicleWorldGraph::CalcOffroadWeight(m2::PointD const & from,
   return RouteWeight(m_estimator->CalcOffroadWeight(from, to));
 }
 
+double SingleVehicleWorldGraph::CalcSegmentTransitTime(Segment const & segment)
+{
+  return m_estimator->CalcSegmentTransitTime(segment, GetRoadGeometry(segment.GetMwmId(), segment.GetFeatureId()));
+}
+
 bool SingleVehicleWorldGraph::LeapIsAllowed(NumMwmId mwmId) const
 {
   return m_estimator->LeapIsAllowed(mwmId);

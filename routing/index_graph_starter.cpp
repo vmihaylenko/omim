@@ -243,6 +243,15 @@ RouteWeight IndexGraphStarter::CalcSegmentWeight(Segment const & segment) const
   return m_graph.CalcOffroadWeight(vertex.GetPointFrom(), vertex.GetPointTo());
 }
 
+double IndexGraphStarter::CalcSegmentTransitTime(Segment const & segment) const
+{
+  // We don't distinguish fake segment weight and fake segment transit time.
+  if (IsFakeSegment(segment))
+    return CalcSegmentWeight(segment).GetWeight();
+
+  return m_graph.CalcSegmentTransitTime(segment);
+}
+
 RouteWeight IndexGraphStarter::CalcRouteSegmentWeight(vector<Segment> const & route,
                                                       size_t segmentIndex) const
 {
