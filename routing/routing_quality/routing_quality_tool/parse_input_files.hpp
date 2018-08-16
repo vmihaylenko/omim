@@ -1,9 +1,11 @@
 #pragma once
 
-#include "routing/routing_quality/check_waypoints.hpp"
+#include "routing/routing_quality/waypoints.hpp"
 #include "routing/routing_quality/utils.hpp"
 
 #include "coding/file_reader.hpp"
+
+#include "geometry/mercator.hpp"
 
 #include "base/string_utils.hpp"
 
@@ -26,6 +28,8 @@ void SerializeLatLon(Iter begin, Iter end, Container & c)
     double lat, lon;
     CHECK(strings::to_double(coords[0], lat), ("Incorrect string", coords[0]));
     CHECK(strings::to_double(coords[1], lon), ("Incorrect string", coords[1]));
+    CHECK(MercatorBounds::ValidLat(lat), ("Incorrect lat", lat));
+    CHECK(MercatorBounds::ValidLon(lon), ("Incorrect lon", lon));
     c.emplace_back(lat, lon);
   }
 }

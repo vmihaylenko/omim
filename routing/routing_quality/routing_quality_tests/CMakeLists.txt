@@ -3,6 +3,7 @@ project(routing_quality_tests)
 set(
   SRC
   check_waypoints_tests.cpp
+  mapbox_api_tests.cpp
 )
 
 omim_add_test(${PROJECT_NAME} ${SRC})

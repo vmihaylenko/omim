@@ -1,4 +1,4 @@
-#include "routing/routing_quality/check_waypoints.hpp"
+#include "routing/routing_quality/waypoints.hpp"
 #include "routing/routing_quality/utils.hpp"
 
 #include "geometry/point2d.hpp"
@@ -7,6 +7,7 @@
 #include "base/logging.hpp"
 
 #include <algorithm>
+#include <utility>
 
 using namespace std;
 
@@ -21,14 +22,15 @@ struct NumberOfMatchedWaypoints
     auto constexpr kEpsilon = 0.001;
 
     Similarity bestResult = 0.0;
-    for (auto k = 0UL; k < candidates.size(); ++k)
+    for (size_t k = 0; k < candidates.size(); ++k)
     {
       auto const & candidate = candidates[k];
-      auto j = 0UL;
+      size_t j = 0;
       auto const points = FromLatLon(candidate.m_coords);
       auto const size = points.size();
-      auto numberOfErrors = 0UL;
-      for (auto i = 0UL; i < size; ++i)
+      CHECK_GREATER(size, 0, ());
+      size_t numberOfErrors = 0;
+      for (size_t i = 0; i < size; ++i)
       {
         auto const & p1 = points[i];
         bool pointFound = false;
@@ -38,6 +40,7 @@ struct NumberOfMatchedWaypoints
           if (AlmostEqualAbs(p1, p2, kEpsilon))
           {
             pointFound = true;
+            ++j;
             break;
           }
         }
@@ -55,6 +58,7 @@ struct NumberOfMatchedWaypoints
       bestResult = max(bestResult, result);
     }
 
+    LOG(LINFO, ("Best result", bestResult));
     return bestResult;
   }
 };
@@ -65,5 +69,4 @@ Similarity CheckWaypoints(RouteParams && params, vector<Waypoints> && candidates
   auto points = GetRoutePoints(move(params));
   return metrics::NumberOfMatchedWaypoints()(move(points), move(candidates));
 }
-
 }  // namespace routing_quality

@@ -2,8 +2,11 @@ project(routing_quality)
 
 set(
   SRC
-  check_waypoints.cpp
-  check_waypoints.hpp
+  waypoints.cpp
+  waypoints.hpp
+  mapbox/api.cpp
+  mapbox/api.hpp
+  mapbox/types.hpp
   utils.cpp
   utils.hpp
 )

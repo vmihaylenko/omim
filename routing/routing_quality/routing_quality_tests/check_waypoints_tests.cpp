@@ -1,7 +1,7 @@
 #include "testing/testing.hpp"
 
 #include "routing/routing_quality/utils.hpp"
-#include "routing/routing_quality/check_waypoints.hpp"
+#include "routing/routing_quality/waypoints.hpp"
 
 #include <utility>
 #include <vector>
@@ -44,19 +44,19 @@ UNIT_TEST(RoutingTools_CompareSmoke)
 
     // Through M-10 and MCA.
     Waypoints second;
-    second.m_coords = {{55.9977555, 37.2494182},
+    second.m_coords = {{55.997755, 37.249418},
                        {55.886276, 37.439159},
                        {55.868827, 37.407842},
                        {55.586450, 37.716723},
-                       {55.5785543, 37.7546882}};
+                       {55.578554, 37.754688}};
     second.m_factor = 1.0;
     candidates.emplace_back(move(second));
 
     // Through M-10 and Moscow center.
     Waypoints third;
     third.m_coords = {{55.9897496, 37.2696651},
-                      {55.876251, 37.4512971},
-                      {55.782883, 37.5711815},
+                      {55.8762511, 37.4512971},
+                      {55.7828833, 37.5711815},
                       {55.7609266, 37.6008701},
                       {55.7566258, 37.5986119},
                       {55.7497665, 37.6065493},

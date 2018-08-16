@@ -1,6 +1,6 @@
 #include "routing/routing_quality/routing_quality_tool/parse_input_files.hpp"
 
-#include "routing/routing_quality/check_waypoints.hpp"
+#include "routing/routing_quality/waypoints.hpp"
 #include "routing/routing_quality/utils.hpp"
 
 #include "base/assert.hpp"
