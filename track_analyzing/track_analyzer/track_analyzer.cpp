@@ -57,6 +57,9 @@ DEFINE_double(min_speed, 15.0, "minimum track average speed in km/hour");
 DEFINE_double(max_speed, 110.0, "maximum track average speed in km/hour");
 DEFINE_bool(ignore_traffic, true, "ignore tracks with traffic data");
 
+DEFINE_string(in_city_out, "", "");
+DEFINE_string(out_city_out, "", "");
+
 size_t Checked_track()
 {
   if (FLAGS_track < 0)
@@ -88,7 +91,7 @@ void CmdMatchDir(string const & logDir, string const & trackExt);
 void CmdUnmatchedTracks(string const & logFile, string const & trackFileCsv);
 // Print aggregated tracks to csv table.
 void CmdTagsTable(string const & filepath, string const & trackExtension,
-                  StringFilter mwmIsFiltered, StringFilter userFilter);
+                  StringFilter mwmIsFiltered, StringFilter userFilter, string const & inCityOut, string const & outCityOut);
 // Print track information.
 void CmdTrack(string const & trackFile, string const & mwmName, string const & user,
               size_t trackIdx);
@@ -143,7 +146,7 @@ int main(int argc, char ** argv)
     else if (cmd == "table")
     {
       CmdTagsTable(Checked_in(), FLAGS_track_extension, MakeFilter(FLAGS_mwm),
-                   MakeFilter(FLAGS_user));
+                   MakeFilter(FLAGS_user), FLAGS_in_city_out, FLAGS_out_city_out);
     }
     else if (cmd == "gpx")
     {

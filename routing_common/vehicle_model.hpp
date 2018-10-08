@@ -45,6 +45,7 @@ public:
 
   struct InOutCitySpeedKMpH
   {
+    InOutCitySpeedKMpH() = default;
     InOutCitySpeedKMpH(SpeedKMpH const & inCity, SpeedKMpH const & outCity) noexcept
       : m_inCity(inCity), m_outCity(outCity)
     {

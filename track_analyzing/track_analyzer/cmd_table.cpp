@@ -19,6 +19,7 @@
 
 #include "coding/file_name_utils.hpp"
 #include "coding/file_reader.hpp"
+#include "coding/file_writer.hpp"
 
 #include "base/assert.hpp"
 #include "base/sunrise_sunset.hpp"
@@ -33,6 +34,10 @@
 #include <utility>
 #include <vector>
 
+#include <unordered_map>
+#include <numeric>
+#include <sstream>
+
 #include "defines.hpp"
 
 using namespace routing;
@@ -41,6 +46,10 @@ using namespace track_analyzing;
 
 namespace
 {
+using SpeedsMap = unordered_map<string, VehicleModel::InOutCitySpeedKMpH>;
+
+SpeedsMap kSpeedsMap;
+
 string TypeToString(uint32_t type)
 {
   if (type == 0)
@@ -195,14 +204,47 @@ public:
            m_speedGroup == traffic::SpeedGroup::G5;
   }
 
+  RoadInfo const & GetRoadInfo() const { return m_roadInfo; }
+
+  string GetSurface() const
+  {
+    auto const type = TypeToString(m_roadInfo.m_type.m_surfaceType);
+    if (type == "psurface-paved_good")
+    {
+      return "1,0,0,0,";
+    }
+    else if (type == "psurface-paved_bad")
+    {
+      return "0,1,0,0,";
+    }
+    else if (type == "psurface-unpaved_good")
+    {
+      return "0,0,1,0,";
+    }
+    else
+    {
+      return "0,0,0,1,";
+    }
+  }
+
   string GetSummary() const
   {
+    auto const hwType = TypeToString(m_roadInfo.m_type.m_hwType);
+    auto const it = kSpeedsMap.find(hwType);
+    if (it == kSpeedsMap.cend())
+    {
+      return "";
+    }
+
     ostringstream out;
-    out << TypeToString(m_roadInfo.m_type.m_hwType) << ","
-        << TypeToString(m_roadInfo.m_type.m_surfaceType) << ","
-        << m_roadInfo.m_isCityRoad << ","
+    auto const isCityRoad = m_roadInfo.m_isCityRoad;
+
+    auto const & speed = it->second;
+    out << hwType << ","
+        << GetSurface()
         << m_roadInfo.m_isOneWay << ","
-        << m_isDayTime;
+        << m_isDayTime << ","
+        << (isCityRoad ? speed.m_inCity.m_weight : speed.m_outCity.m_weight);
 
     return out.str();
   }
@@ -210,7 +252,7 @@ public:
 private:
   RoadInfo m_roadInfo;
   traffic::SpeedGroup m_speedGroup = traffic::SpeedGroup::Unknown;
-  bool m_isDayTime;
+  bool m_isDayTime = false;
 };
 
 class SpeedInfo final
@@ -227,7 +269,7 @@ public:
   string GetSummary() const
   {
     ostringstream out;
-    out << m_totalDistance << "," << m_totalTime << "," << CalcSpeedKMpH(m_totalDistance, m_totalTime);
+    out << m_totalDistance << "," << m_totalTime; // << "," << CalcSpeedKMpH(m_totalDistance, m_totalTime);
     return out.str();
   }
 
@@ -258,18 +300,28 @@ public:
       m_moveInfos[it.first].Add(it.second);
   }
 
-  string GetSummary() const
+  struct Summary
   {
-    ostringstream out;
+    string m_in;
+    string m_out;
+  };
+
+  Summary GetSummary() const
+  {
+    Summary s;
+    ostringstream in, out;
     for (auto const & it : m_moveInfos)
     {
       if (!it.first.IsValid())
         continue;
 
-      out << m_mwmName << "," << it.first.GetSummary() << "," << it.second.GetSummary() << '\n';
+      auto & o = it.first.GetRoadInfo().m_isCityRoad ? in : out;
+      o << m_mwmName << "," << it.first.GetSummary() << "," << it.second.GetSummary() << '\n';
     }
 
-    return out.str();
+    s.m_in = in.str();
+    s.m_out = out.str();
+    return s;
   }
 
 private:
@@ -323,13 +375,25 @@ private:
 namespace track_analyzing
 {
 void CmdTagsTable(string const & filepath, string const & trackExtension, StringFilter mwmFilter,
-                  StringFilter userFilter)
+                  StringFilter userFilter, string const & inCityOut, string const & outCityOut)
 {
-  cout << "mwm,hw type,surface type,is city road,is one way,is day,distance,time,speed km/h\n";
+//  cout << "mwm,hw type,surface type,is one way,is day,distance,time,speed km/h\n";
 
   storage::Storage storage;
   storage.RegisterAllLocalMaps(false /* enableDiffs */);
   auto numMwmIds = CreateNumMwmIds(storage);
+  auto const & limits = CarModel::GetLimits();
+  using namespace string_literals;
+  for (auto const & l : limits)
+  {
+    CHECK_EQUAL(l.m_types.size(), 2, ());
+    string key = l.m_types[0] + "-" + l.m_types[1];
+    kSpeedsMap.emplace(move(key), l.m_speed);
+  }
+
+  ostringstream in, out;
+  in << "mwm,hw type,psurface-paved_good,psurface-paved_bad,psurface-unpaved_good,psurface-unpaved_bad,is one way,is day,speed km/h,distance,time\n";
+  out << "mwm,hw type,psurface-paved_good,psurface-paved_bad,psurface-unpaved_good,psurface-unpaved_bad,is one way,is day,speed km/h,distance,time\n";
 
   auto processMwm = [&](string const & mwmName, UserToMatchedTracks const & userToMatchedTracks) {
     if (mwmFilter(mwmName))
@@ -368,8 +432,11 @@ void CmdTagsTable(string const & filepath, string const & trackExtension, String
         }
 
         auto const summary = aggregator.GetSummary();
-        if (!summary.empty())
-          cout << summary;
+        if (!summary.m_in.empty())
+          in << summary.m_in;
+
+        if (!summary.m_out.empty())
+          out << summary.m_out;
       }
     }
   };
@@ -380,5 +447,15 @@ void CmdTagsTable(string const & filepath, string const & trackExtension, String
   };
 
   ForEachTrackFile(filepath, trackExtension, numMwmIds, processTrack);
+  {
+    FileWriter w(inCityOut);
+    auto const str = in.str();
+    w.Write(str.data(), str.size());
+  }
+  {
+    FileWriter w(outCityOut);
+    auto const str = out.str();
+    w.Write(str.data(), str.size());
+  }
 }
 }  // namespace track_analyzing
