@@ -1,0 +1,8 @@
+//
+// Created by Владимир Быко-Янко on 19.10.2018.
+//
+
+#ifndef OMIM_MAXSPEED_SERIALIZATION_HPP
+#define OMIM_MAXSPEED_SERIALIZATION_HPP
+
+#endif //OMIM_MAXSPEED_SERIALIZATION_HPP
