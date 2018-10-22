@@ -1,8 +1,5 @@
-//
-// Created by Владимир Быко-Янко on 19.10.2018.
-//
+#pragma once
 
-#ifndef OMIM_MAXSPEED_SERIALIZATION_HPP
-#define OMIM_MAXSPEED_SERIALIZATION_HPP
-
-#endif //OMIM_MAXSPEED_SERIALIZATION_HPP
+namespace routing
+{
+}  // namespace routing
