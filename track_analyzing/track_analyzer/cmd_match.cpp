@@ -45,6 +45,11 @@ void MatchTracks(MwmToTracks const & mwmToTracks, storage::Storage const & stora
 
   auto processMwm = [&](string const & mwmName, UserToTrack const & userToTrack) {
     auto const countryFile = platform::CountryFile(mwmName);
+    if (!storage.GetLatestLocalFile(countryFile)) 
+    {
+	return false;
+    }
+
     auto const mwmId = numMwmIds.GetId(countryFile);
     TrackMatcher matcher(storage, mwmId, countryFile);
 
@@ -78,6 +83,7 @@ void MatchTracks(MwmToTracks const & mwmToTracks, storage::Storage const & stora
     LOG(LINFO, (numMwmIds.GetFile(mwmId).GetName(), ", users:", userToTrack.size(), ", tracks:",
                 matcher.GetTracksCount(), ", points:", matcher.GetPointsCount(),
                 ", non matched points:", matcher.GetNonMatchedPointsCount()));
+    return true;
   };
 
   ForTracksSortedByMwmName(mwmToTracks, numMwmIds, processMwm);

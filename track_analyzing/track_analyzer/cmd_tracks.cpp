@@ -138,7 +138,7 @@ void CmdTracks(string const & filepath, string const & trackExtension, StringFil
 
   auto processMwm = [&](string const & mwmName, UserToMatchedTracks const & userToMatchedTracks) {
     if (mwmFilter(mwmName))
-      return;
+      return false;
 
     TrackStats & mwmStats = mwmToStats[mwmName];
 
@@ -200,6 +200,7 @@ void CmdTracks(string const & filepath, string const & trackExtension, StringFil
       if (thereAreUnfilteredTracks)
         mwmStats.AddUsers(1);
     }
+    return true;
   };
 
   auto processFile = [&](string const & filename, MwmToMatchedTracks const & mwmToMatchedTracks) {

@@ -49,7 +49,8 @@ void ForTracksSortedByMwmName(MwmToTracks const & mwmToTracks, routing::NumMwmId
     auto const mwmId = numMwmIds.GetId(platform::CountryFile(mwmName));
     auto mwmIt = mwmToTracks.find(mwmId);
     CHECK(mwmIt != mwmToTracks.cend(), ());
-    toDo(mwmName, mwmIt->second);
+    if (!toDo(mwmName, mwmIt->second))
+       continue;
   }
 }
 
