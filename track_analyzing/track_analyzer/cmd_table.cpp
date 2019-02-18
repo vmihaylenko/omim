@@ -56,6 +56,27 @@ string TypeToString(uint32_t type)
   return classif().GetReadableObjectName(type);
 }
 
+string GetCountryName(string const & mwm, storage::Storage const & storage)
+{
+  string result = storage.GetParentIdFor(mwm);
+  if (result.empty())
+  {
+    // Mwm is a top lvl countryId or stands for a disputed territory.
+    return mwm;
+  }
+
+  while (true)
+  {
+    string parent = storage.GetParentIdFor(result);
+    if (parent.empty())
+      break;
+
+    result = move(parent);
+  }
+
+  return result;
+}
+
 bool DayTimeToBool(DayTimeType type)
 {
   switch (type)
@@ -377,6 +398,8 @@ void CmdTagsTable(string const & filepath, string const & trackExtension, String
     if (mwmFilter(mwmName))
       return;
 
+    auto const countryName = GetCountryName(mwmName, storage);
+
     shared_ptr<VehicleModelInterface> vehicleModel =
         CarModelFactory({}).GetVehicleModelForCountry(mwmName);
     string const mwmFile = GetCurrentVersionMwmFile(storage, mwmName);
@@ -408,7 +431,7 @@ void CmdTagsTable(string const & filepath, string const & trackExtension, String
           subTrackBegin = subTrackEnd;
         }
 
-        auto const summary = aggregator.GetSummary(user, mwmName);
+        auto const summary = aggregator.GetSummary(user, countryName);
         if (!summary.empty())
           cout << summary;
       }
