@@ -4,7 +4,6 @@ project(mapswithme C CXX)
 
 include_directories(
   ${OMIM_ROOT}/3party/jansson/src
-  ${OMIM_ROOT}/3party/boost
   ${OMIM_ROOT}/3party/protobuf/protobuf/src
   ${OMIM_ROOT}/3party/glm
   ${OMIM_ROOT}/3party/succinct
@@ -98,6 +97,7 @@ set(
 omim_add_library(mapswithme SHARED ${SRC})
 
 target_link_libraries(
+  ${Boost_LIBRARIES}
   mapswithme
   # Android libs
   log
